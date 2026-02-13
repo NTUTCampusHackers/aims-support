@@ -10,22 +10,22 @@
 ### 1. リポジトリのクローン
 まずはソースコードを手元のPCにダウンロードします。
 
-\`\`\`bash
+```bash
 git clone https://github.com/NTUTCampusHackers/aims-support.git
 cd aims-support
-\`\`\`
+```
 
 ### 2. Chrome拡張機能管理画面を開く
 1. Google Chromeを起動します。
 2. アドレスバーに以下を入力してアクセスします。
-   \`chrome://extensions/\`
+   `chrome://extensions/ `
 
 ### 3. デベロッパーモードの有効化
 画面右上にある **「デベロッパーモード (Developer mode)」** のスイッチを **ON** にします。
 
 ### 4. パッケージ化されていない拡張機能を読み込む
 1. 左上に表示される **「パッケージ化されていない拡張機能を読み込む (Load unpacked)」** ボタンをクリックします。
-2. 先ほどクローンした \`aims-support\` フォルダ（\`manifest.json\` が含まれているフォルダ）を選択します。
+2. 先ほどクローンした `aims-support` フォルダ（`manifest.json` が含まれているフォルダ）を選択します。
 
 ### 5. 動作確認
 拡張機能リストにアイコンが追加されれば導入成功です。
@@ -35,10 +35,10 @@ cd aims-support
 
 ## 🔄 開発サイクル (変更を反映させる方法)
 
-コード（\`popup.html\`, \`js\`, \`json\` 等）を編集した後は、以下の手順で再読み込みを行う必要があります。
+コード（`popup.html`, `js`, `json` 等）を編集した後は、以下の手順で再読み込みを行う必要があります。
 
 1. コードを保存する。
-2. \`chrome://extensions/\` の画面を開く。
+2. `chrome://extensions/` の画面を開く。
 3. 該当する拡張機能のカードにある **「更新（回転矢印アイコン）」** をクリックする。
 4. 拡張機能のポップアップを開き直し、変更が反映されているか確認する。
 
@@ -46,6 +46,6 @@ cd aims-support
 
 ## 📁 ファイル構成
 
-- \`manifest.json\`: 拡張機能の設定ファイル
-- \`popup.html\`: ポップアップ画面のUI
-- \`icons/\`: アイコン画像格納用 (予定)
+- `manifest.json`: 拡張機能の設定ファイル
+- `popup.html`: ポップアップ画面のUI
+- `icons/`: アイコン画像格納用 (予定)
