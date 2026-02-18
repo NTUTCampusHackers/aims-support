@@ -4,20 +4,40 @@
     <meta charset="UTF-8">
     <style>
       body {
-        width: 200px;
-        height: 100px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        width: 300px; /* 幅を少し広げました */
+        padding: 10px;
         font-family: sans-serif;
       }
       h1 {
-        color: #4285f4; /* Google Blue */
-        font-size: 20px;
+        color: #4285f4;
+        font-size: 18px;
+        margin-top: 0;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 4px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background-color: #3367d6;
+      }
+      textarea {
+        width: 100%;
+        height: 150px;
+        box-sizing: border-box;
       }
     </style>
   </head>
   <body>
-    <h1>Hello World!</h1>
+    <h1>Text Extractor</h1>
+    <button id="extractBtn">ページ内のテキストを抽出</button>
+    <textarea id="resultArea" placeholder="ここにテキストが表示されます"></textarea>
+
+    <script src="popup.js"></script>
   </body>
 </html>
