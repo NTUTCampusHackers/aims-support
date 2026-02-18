@@ -1,12 +1,15 @@
 {
-   "name": "Hello World Extension",
-   "version": "1.0",
-   "manifest_version": 3,
-   "description": "初めてのChrome拡張機能",
-   "action": {
-     "default_popup": "popup.html"
-   }
- }
- 
- //解説: `manifest_version: 3` は現在のChromeウェブストアの必須要件だ。
- // `action` の中の `default_popup` 
+  "name": "Hello World Extension",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "初めてのChrome拡張機能",
+  "permissions": [
+    "declarativeContent"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
