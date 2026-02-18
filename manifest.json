@@ -4,7 +4,9 @@
   "manifest_version": 3,
   "description": "初めてのChrome拡張機能",
   "permissions": [
-    "declarativeContent"
+    "declarativeContent",
+    "scripting",
+    "activeTab"
   ],
   "background": {
     "service_worker": "background.js"
