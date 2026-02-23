@@ -1,5 +1,5 @@
 // ==========================================
-// 1. 単位集計機能（前回までのコード）
+// 1. 単位集計機能（変更なし）
 // ==========================================
 const extractBtn = document.getElementById("extractBtn");
 const creditOkValue = document.getElementById("creditOkValue");
@@ -62,13 +62,13 @@ function calculateCredits() {
 }
 
 // ==========================================
-// 2. 分野別講義リスト表示機能（今回追加したコード）
+// 2. 分野別講義リスト表示機能（新しいJSON構造に対応）
 // ==========================================
 const categorySelect = document.getElementById("categorySelect");
 const courseList = document.getElementById("courseList");
-let coursesData = []; // JSONデータを格納する変数
+let coursesData = [];
 
-// ポップアップが開かれた時にJSONファイルを読み込む
+// JSONファイルを読み込む
 fetch(chrome.runtime.getURL('courses.json'))
   .then(response => response.json())
   .then(data => {
@@ -77,37 +77,62 @@ fetch(chrome.runtime.getURL('courses.json'))
     // JSONのデータから重複しないようにカテゴリ（分野区分）を抽出
     const categories = [...new Set(coursesData.map(course => course.category))];
 
-    // プルダウン（select）にカテゴリを追加していく
+    // プルダウンにカテゴリを追加
     categories.forEach(category => {
-      const option = document.createElement("option");
-      option.value = category;
-      option.textContent = category;
-      categorySelect.appendChild(option);
+      // 空欄のカテゴリを除外したい場合はここでチェック
+      if (category) {
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        categorySelect.appendChild(option);
+      }
     });
   })
   .catch(error => {
     console.error("データの読み込みに失敗しました:", error);
-    courseList.innerHTML = "<li>データベースの読み込みに失敗しました。</li>";
+    courseList.innerHTML = "<li class='course-item'>データベースの読み込みに失敗しました。</li>";
   });
 
 // プルダウンの選択が変更された時の処理
 categorySelect.addEventListener("change", (e) => {
   const selectedCategory = e.target.value;
-  courseList.innerHTML = ""; // 表示中のリストを一旦クリア
+  courseList.innerHTML = "";
 
-  // 「選択してください」を選んだ場合は何もしない
   if (!selectedCategory) {
-    courseList.innerHTML = "<li>分野を選択するとここに講義が表示されます。</li>";
+    courseList.innerHTML = "<li class='course-item'>分野を選択するとここに講義が表示されます。</li>";
     return;
   }
 
-  // 選ばれたカテゴリに一致する講義だけを抽出
+  // 選ばれたカテゴリに一致する講義を抽出
   const filteredCourses = coursesData.filter(course => course.category === selectedCategory);
+
+  if (filteredCourses.length === 0) {
+    courseList.innerHTML = "<li class='course-item'>該当する講義がありません。</li>";
+    return;
+  }
 
   // 抽出した講義をリスト形式でHTMLに追加
   filteredCourses.forEach(course => {
     const li = document.createElement("li");
-    li.textContent = `${course.name} (${course.credits}単位)`;
+    li.className = "course-item";
+
+    // データが存在しない場合のフォールバック（ハイフン等）を設定
+    const title = course.title || "不明な講義";
+    const credits = course.credits || "-";
+    const grade = course.grade || "-";
+    const reqOrChoice = course.required_or_choice || "-";
+    const semester = course.semester || "-";
+    const category = course.category || "-";
+
+    // 表示するHTMLを組み立てる
+    li.innerHTML = `
+      <div class="course-title">${title}</div>
+      <div class="course-details">
+        分野: ${category}<br>
+        単位: ${credits} | 評価: <span class="grade">${grade}</span><br>
+        区分: ${reqOrChoice} | 時期: ${semester}
+      </div>
+    `;
     courseList.appendChild(li);
   });
 });
