@@ -1,12 +1,13 @@
+// ==========================================
+// 1. 単位集計機能（前回までのコード）
+// ==========================================
 const extractBtn = document.getElementById("extractBtn");
 const creditOkValue = document.getElementById("creditOkValue");
 const creditNgValue = document.getElementById("creditNgValue");
 
 extractBtn.addEventListener("click", async () => {
-  // 現在のアクティブなタブを取得
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-  // ページ内で集計関数を実行
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: calculateCredits,
@@ -21,42 +22,33 @@ extractBtn.addEventListener("click", async () => {
   });
 });
 
-// --- ここから下のコードが対象のWebページ上で実行されます ---
 function calculateCredits() {
   const text = document.body.innerText;
   const lines = text.split('\n');
 
   let creditTotal = 0;
   let noCreditTotal = 0;
-  let parsedSubjects = new Set(); // 重複カウント防止用のセット
+  let parsedSubjects = new Set();
 
   lines.forEach(line => {
-    // タブ、または2つ以上の空白で区切る
     const parts = line.trim().split(/\t+|\s{2,}/);
-
     if (parts.length >= 5) {
       let gradeIndex = -1;
-
-      // 行の後ろの方から「評価（A+, A, B, C, D）」を探す
       for (let i = parts.length - 2; i >= 1; i--) {
         if (/^(A\+|A|B|C|D)$/.test(parts[i].trim())) {
-          // 評価の次の列が「単位数（数字）」か確認
           if (/^\d+$/.test(parts[i + 1].trim())) {
             gradeIndex = i;
             break;
           }
         }
       }
-
       if (gradeIndex !== -1) {
         const grade = parts[gradeIndex].trim();
         const credit = parseInt(parts[gradeIndex + 1].trim(), 10);
-        const subjectName = parts[1].trim(); // 科目名（通常左から2番目）
+        const subjectName = parts[1].trim();
 
-        // 科目名がまだ集計されていない場合のみ加算（重複防止）
         if (!parsedSubjects.has(subjectName)) {
           parsedSubjects.add(subjectName);
-
           if (grade === 'D') {
             noCreditTotal += credit;
           } else {
@@ -66,6 +58,56 @@ function calculateCredits() {
       }
     }
   });
-
   return { creditTotal, noCreditTotal };
 }
+
+// ==========================================
+// 2. 分野別講義リスト表示機能（今回追加したコード）
+// ==========================================
+const categorySelect = document.getElementById("categorySelect");
+const courseList = document.getElementById("courseList");
+let coursesData = []; // JSONデータを格納する変数
+
+// ポップアップが開かれた時にJSONファイルを読み込む
+fetch(chrome.runtime.getURL('courses.json'))
+  .then(response => response.json())
+  .then(data => {
+    coursesData = data;
+
+    // JSONのデータから重複しないようにカテゴリ（分野区分）を抽出
+    const categories = [...new Set(coursesData.map(course => course.category))];
+
+    // プルダウン（select）にカテゴリを追加していく
+    categories.forEach(category => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      categorySelect.appendChild(option);
+    });
+  })
+  .catch(error => {
+    console.error("データの読み込みに失敗しました:", error);
+    courseList.innerHTML = "<li>データベースの読み込みに失敗しました。</li>";
+  });
+
+// プルダウンの選択が変更された時の処理
+categorySelect.addEventListener("change", (e) => {
+  const selectedCategory = e.target.value;
+  courseList.innerHTML = ""; // 表示中のリストを一旦クリア
+
+  // 「選択してください」を選んだ場合は何もしない
+  if (!selectedCategory) {
+    courseList.innerHTML = "<li>分野を選択するとここに講義が表示されます。</li>";
+    return;
+  }
+
+  // 選ばれたカテゴリに一致する講義だけを抽出
+  const filteredCourses = coursesData.filter(course => course.category === selectedCategory);
+
+  // 抽出した講義をリスト形式でHTMLに追加
+  filteredCourses.forEach(course => {
+    const li = document.createElement("li");
+    li.textContent = `${course.name} (${course.credits}単位)`;
+    courseList.appendChild(li);
+  });
+});

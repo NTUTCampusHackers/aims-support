@@ -8,12 +8,13 @@
         padding: 15px;
         font-family: sans-serif;
       }
-      h1 {
+      h1, h2 {
         color: #4285f4;
-        font-size: 18px;
         margin-top: 0;
-        margin-bottom: 15px;
       }
+      h1 { font-size: 18px; margin-bottom: 15px; }
+      h2 { font-size: 16px; margin-top: 15px; margin-bottom: 10px; }
+
       button {
         width: 100%;
         padding: 10px;
@@ -25,9 +26,8 @@
         font-weight: bold;
         margin-bottom: 15px;
       }
-      button:hover {
-        background-color: #3367d6;
-      }
+      button:hover { background-color: #3367d6; }
+
       .result-box {
         background-color: #f8f9fa;
         border: 1px solid #dadce0;
@@ -35,18 +35,38 @@
         padding: 10px;
         margin-bottom: 10px;
       }
-      .result-title {
-        font-size: 12px;
-        color: #5f6368;
-        margin-bottom: 5px;
+      .result-title { font-size: 12px; color: #5f6368; margin-bottom: 5px; }
+      .result-value { font-size: 20px; font-weight: bold; color: #202124; }
+      .credit-ok { color: #0f9d58; }
+      .credit-ng { color: #d93025; }
+
+      /* 今回追加する部分のスタイル */
+      hr {
+        border: 0;
+        height: 1px;
+        background-color: #dadce0;
+        margin: 20px 0;
       }
-      .result-value {
-        font-size: 20px;
-        font-weight: bold;
-        color: #202124;
+      select {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        border: 1px solid #dadce0;
+        border-radius: 4px;
       }
-      .credit-ok { color: #0f9d58; /* 緑色 */ }
-      .credit-ng { color: #d93025; /* 赤色 */ }
+      #courseList {
+        list-style-type: none;
+        padding-left: 0;
+        margin: 0;
+        max-height: 150px;
+        overflow-y: auto; /* 長くなったらスクロールさせる */
+      }
+      #courseList li {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        font-size: 14px;
+      }
+      #courseList li:last-child { border-bottom: none; }
     </style>
   </head>
   <body>
@@ -62,6 +82,16 @@
       <div class="result-title">単位なし（評価：D）</div>
       <div class="result-value credit-ng" id="creditNgValue">- 単位</div>
     </div>
+
+    <hr>
+
+    <h2>分野別講義リスト</h2>
+    <select id="categorySelect">
+      <option value="">分野区分を選択してください</option>
+      </select>
+    <ul id="courseList">
+      <li>分野を選択するとここに講義が表示されます。</li>
+    </ul>
 
     <script src="popup.js"></script>
   </body>
