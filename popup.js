@@ -62,8 +62,9 @@ function calculateCredits() {
 }
 
 // ==========================================
-// 2. 分野別講義リスト表示機能（新しいJSON構造に対応）
+// 2. コース・分野別講義リスト表示機能
 // ==========================================
+const courseSelect = document.getElementById("courseSelect");
 const categorySelect = document.getElementById("categorySelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
@@ -74,17 +75,16 @@ fetch(chrome.runtime.getURL('courses.json'))
   .then(data => {
     coursesData = data;
 
-    // JSONのデータから重複しないようにカテゴリ（分野区分）を抽出
-    const categories = [...new Set(coursesData.map(course => course.category))];
+    // JSONのデータから重複しないようにコース（sheet_name）を抽出
+    const sheetNames = [...new Set(coursesData.map(course => course.sheet_name))];
 
-    // プルダウンにカテゴリを追加
-    categories.forEach(category => {
-      // 空欄のカテゴリを除外したい場合はここでチェック
-      if (category) {
+    // コースのプルダウンに追加
+    sheetNames.forEach(sheet => {
+      if (sheet) { // 空欄を除外
         const option = document.createElement("option");
-        option.value = category;
-        option.textContent = category;
-        categorySelect.appendChild(option);
+        option.value = sheet;
+        option.textContent = sheet;
+        courseSelect.appendChild(option);
       }
     });
   })
@@ -93,18 +93,54 @@ fetch(chrome.runtime.getURL('courses.json'))
     courseList.innerHTML = "<li class='course-item'>データベースの読み込みに失敗しました。</li>";
   });
 
-// プルダウンの選択が変更された時の処理
-categorySelect.addEventListener("change", (e) => {
-  const selectedCategory = e.target.value;
-  courseList.innerHTML = "";
+// 【STEP 1】コースが選択されたときの処理
+courseSelect.addEventListener("change", (e) => {
+  const selectedSheet = e.target.value;
 
-  if (!selectedCategory) {
-    courseList.innerHTML = "<li class='course-item'>分野を選択するとここに講義が表示されます。</li>";
+  // 分野プルダウンとリストを一旦リセット
+  categorySelect.innerHTML = '<option value="">分野区分を選択してください</option>';
+  courseList.innerHTML = "<li class='course-item'>分野を選択するとここに講義が表示されます。</li>";
+
+  // コースが未選択に戻された場合は分野プルダウンを無効化
+  if (!selectedSheet) {
+    categorySelect.disabled = true;
     return;
   }
 
-  // 選ばれたカテゴリに一致する講義を抽出
-  const filteredCourses = coursesData.filter(course => course.category === selectedCategory);
+  // 分野プルダウンを有効化
+  categorySelect.disabled = false;
+
+  // 選ばれたコースに紐づく分野（category）だけを抽出して重複をなくす
+  const coursesInSheet = coursesData.filter(course => course.sheet_name === selectedSheet);
+  const categories = [...new Set(coursesInSheet.map(course => course.category))];
+
+  // 分野プルダウンに追加
+  categories.forEach(category => {
+    if (category) {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      categorySelect.appendChild(option);
+    }
+  });
+});
+
+// 【STEP 2】分野が選択されたときの処理
+categorySelect.addEventListener("change", (e) => {
+  const selectedSheet = courseSelect.value;
+  const selectedCategory = e.target.value;
+
+  courseList.innerHTML = "";
+
+  if (!selectedCategory) {
+    courseList.innerHTML = "<li class='course-item'>コースと分野を選択するとここに講義が表示されます。</li>";
+    return;
+  }
+
+  // 「コース」と「分野」の両方に一致する講義を抽出
+  const filteredCourses = coursesData.filter(course =>
+    course.sheet_name === selectedSheet && course.category === selectedCategory
+  );
 
   if (filteredCourses.length === 0) {
     courseList.innerHTML = "<li class='course-item'>該当する講義がありません。</li>";
@@ -116,7 +152,6 @@ categorySelect.addEventListener("change", (e) => {
     const li = document.createElement("li");
     li.className = "course-item";
 
-    // データが存在しない場合のフォールバック（ハイフン等）を設定
     const title = course.title || "不明な講義";
     const credits = course.credits || "-";
     const grade = course.grade || "-";
@@ -124,12 +159,11 @@ categorySelect.addEventListener("change", (e) => {
     const semester = course.semester || "-";
     const category = course.category || "-";
 
-    // 表示するHTMLを組み立てる
     li.innerHTML = `
       <div class="course-title">${title}</div>
       <div class="course-details">
         分野: ${category}<br>
-        単位: ${credits} | 評価: <span class="grade">${grade}</span><br>
+        単位: ${credits} | 単位数: <span class="grade">${grade}</span><br>
         区分: ${reqOrChoice} | 時期: ${semester}
       </div>
     `;

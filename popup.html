@@ -53,13 +53,16 @@
         border: 1px solid #dadce0;
         border-radius: 4px;
       }
+      select:disabled {
+        background-color: #f1f3f4;
+        color: #9aa0a6;
+      }
 
-      /* 講義リストのデザイン */
       #courseList {
         list-style-type: none;
         padding-left: 0;
         margin: 0;
-        max-height: 250px; /* スクロール領域を少し広げました */
+        max-height: 250px;
         overflow-y: auto;
       }
       .course-item {
@@ -97,12 +100,17 @@
 
     <hr>
 
-    <h2>分野別講義リスト</h2>
-    <select id="categorySelect">
+    <h2>コース・分野別講義リスト</h2>
+    <select id="courseSelect">
+      <option value="">コースを選択してください</option>
+    </select>
+
+    <select id="categorySelect" disabled>
       <option value="">分野区分を選択してください</option>
     </select>
+
     <ul id="courseList">
-      <li class="course-item">分野を選択するとここに講義が表示されます。</li>
+      <li class="course-item">コースと分野を選択するとここに講義が表示されます。</li>
     </ul>
 
     <script src="popup.js"></script>
