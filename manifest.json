@@ -1,8 +1,8 @@
 {
-  "name": "Hello World Extension",
-  "version": "1.0",
+  "name": "Aims Supports",
+  "version": "0.5",
   "manifest_version": 3,
-  "description": "初めてのChrome拡張機能",
+  "description": "Aimsのサポートツール",
   "permissions": [
     "declarativeContent",
     "scripting",
