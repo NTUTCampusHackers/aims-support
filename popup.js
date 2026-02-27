@@ -62,19 +62,18 @@ function calculateCredits() {
 }
 
 // ==========================================
-// 2. コース・分野別講義リスト表示機能（マッピング対応版）
+// 2. コース・分野別講義リスト表示機能（新DB対応版）
 // ==========================================
 
-// 表示名と .json 内の sheet_name の紐付けルール
+// 表示名と .json 内の "course_name" の紐付けルール
+// ※「産共通」は全コースで表示されるように配列に含めています
 const courseMapping = {
-  "産業情報学科（1年）": ["1教養教育(産業情報)", "2専門基礎(産業情報)"],
-  "産業情報学科 -情報科学コース-": ["1教養教育(産業情報)", "2専門基礎(産業情報)", "3専門基教(情報科学)", "4専門教育(情報科学)"],
-  "産業情報学科 -先端機械工学コース-": ["1教養教育(産業情報)", "2専門基礎(産業情報)", "x5専門基教(先端機械)", "5専門基教(先端機械)", "x6専門教育(先端機械)", "6専門基教(先端機械)"],
-  "産業情報学科 -建築学コース-": ["1教養教育(産業情報)", "2専門基礎(産業情報)", "7専門基教(建築学)", "8専門教育(建築)"],
-  "産業情報学科 -支援技術学コース-": ["1教養教育(産業情報)", "2専門基礎(産業情報)", "9専門基教(支援-情報)", "10専門教育(支援-情報)", "11専門基教(支援-機器)", "12専門教育(支援-機器)", "13専門基教(支援-住環境)", "14専門教育(支援-住環境)"],
-  "総合デザイン学科（1年）": ["1教養教育（デザイン）"],
-  "総合デザイン学科 -クリエイティブデザイン学": ["1教養教育（デザイン）", "3専門（クリエイティブ）"],
-  "総合デザイン学科 -支援技術学-": ["1教養教育（デザイン）", "4専門（支援-アクセシブル）"]
+  "情報科学コース": ["産共通", "情報科学"],
+  "先端機械工学コース": ["産共通", "先端機械"],
+  "建築学コース": ["産共通", "建築学"],
+  "支援技術学コース（情報）": ["産共通", "支援（情報）"],
+  "支援技術学コース（福祉機器）": ["産共通", "支援（福祉機器）"],
+  "支援技術学コース（福祉住環境）": ["産共通", "支援（福祉住）"]
 };
 
 const courseSelect = document.getElementById("courseSelect");
@@ -82,13 +81,21 @@ const categorySelect = document.getElementById("categorySelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
 
-// JSONファイルを読み込む
-fetch(chrome.runtime.getURL('courses.json'))
+// カテゴリを階層ごとに結合して表示用ラベルを作る関数
+function getCategoryLabel(course) {
+  let label = course.category_large || "";
+  if (course.category_medium) label += ` > ${course.category_medium}`;
+  if (course.category_small) label += ` > ${course.category_small}`;
+  return label;
+}
+
+// 新しいJSONファイルを読み込む
+fetch(chrome.runtime.getURL('courses_view.json'))
   .then(response => response.json())
   .then(data => {
     coursesData = data;
 
-    // JSONのsheet_nameではなく、マッピングのキー（表示名）をプルダウンに追加する
+    // マッピングのキー（表示名）をプルダウンに追加する
     Object.keys(courseMapping).forEach(displayName => {
       const option = document.createElement("option");
       option.value = displayName;
@@ -115,18 +122,19 @@ courseSelect.addEventListener("change", (e) => {
 
   categorySelect.disabled = false;
 
-  // 選択されたコース名に対応する sheet_name の配列を取得
-  const targetSheetNames = courseMapping[selectedDisplayName];
+  // 選択されたコースに対応する course_name の配列を取得（例: ["産共通", "情報科学"]）
+  const targetCourseNames = courseMapping[selectedDisplayName];
 
-  // 該当する sheet_name のいずれかを持つ講義データを絞り込み
+  // 該当する学科の講義データを絞り込み
   const coursesInSelectedCourse = coursesData.filter(course =>
-    targetSheetNames.includes(course.sheet_name)
+    targetCourseNames.includes(course.course_name)
   );
 
-  // その中から重複しない分野（category）を抽出
-  const categories = [...new Set(coursesInSelectedCourse.map(course => course.category))];
+  // その中から重複しないカテゴリを抽出
+  const categories = [...new Set(coursesInSelectedCourse.map(course => getCategoryLabel(course)))];
 
-  categories.forEach(category => {
+  // カテゴリをアルファベット・五十音順にソートして追加
+  categories.sort().forEach(category => {
     if (category) {
       const option = document.createElement("option");
       option.value = category;
@@ -148,12 +156,12 @@ categorySelect.addEventListener("change", (e) => {
     return;
   }
 
-  // 選択されたコース名に対応する sheet_name の配列を取得
-  const targetSheetNames = courseMapping[selectedDisplayName];
+  // 選択されたコース名に対応する配列を取得
+  const targetCourseNames = courseMapping[selectedDisplayName];
 
-  // 「該当するsheet_nameのいずれか」かつ「選択した分野」に一致する講義を抽出
+  // 対象コースかつ、カテゴリラベルが一致する講義を抽出
   const filteredCourses = coursesData.filter(course =>
-    targetSheetNames.includes(course.sheet_name) && course.category === selectedCategory
+    targetCourseNames.includes(course.course_name) && getCategoryLabel(course) === selectedCategory
   );
 
   if (filteredCourses.length === 0) {
@@ -161,24 +169,31 @@ categorySelect.addEventListener("change", (e) => {
     return;
   }
 
+  // 年次順 -> 科目名順 で並び替え
+  filteredCourses.sort((a, b) => {
+    if (a.year !== b.year) return (a.year > b.year ? 1 : -1);
+    return (a.subject_name > b.subject_name ? 1 : -1);
+  });
+
   // 抽出した講義をリスト形式でHTMLに追加
   filteredCourses.forEach(course => {
     const li = document.createElement("li");
     li.className = "course-item";
 
-    const title = course.title || "不明な講義";
-    const credits = course.credits || "-";
-    const grade = course.grade || "-";
-    const reqOrChoice = course.required_or_choice || "-";
-    const semester = course.semester || "-";
-    const category = course.category || "-";
+    const title = course.subject_name || "不明な講義";
+    const credits = course.credits ? `${course.credits}単位` : "-";
+    const reqOrChoice = course.requirement_type || "-";
+    const year = course.year ? `${course.year}年次` : "-";
+    const method = course.teaching_method || "-";
+
+    // 産共通か専門かでタグの色分けなどをすると見やすいです
+    const deptTag = course.course_name === "産共通" ? "共通" : "専門";
 
     li.innerHTML = `
-      <div class="course-title">${title}</div>
+      <div class="course-title"><span class="tag">${deptTag}</span> ${title}</div>
       <div class="course-details">
-        分野: ${category}<br>
-        単位: ${credits} | 評価: <span class="grade">${grade}</span><br>
-        区分: ${reqOrChoice} | 時期: ${semester}
+        区分: ${reqOrChoice} | 単位: ${credits} <br>
+        年次: ${year} | 授業方法: ${method}
       </div>
     `;
     courseList.appendChild(li);
