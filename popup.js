@@ -62,18 +62,15 @@ function calculateCredits() {
 }
 
 // ==========================================
-// 2. コース・分野別講義リスト表示機能（新DB対応版）
+// 2. コース・分野別講義リスト表示機能
 // ==========================================
 
-// 表示名と .json 内の "course_name" の紐付けルール
-// ※「産共通」は全コースで表示されるように配列に含めています
+// ご要望に合わせて選択肢を4つに統合しました
 const courseMapping = {
   "情報科学コース": ["産共通", "情報科学"],
   "先端機械工学コース": ["産共通", "先端機械"],
   "建築学コース": ["産共通", "建築学"],
-  "支援技術学コース（情報）": ["産共通", "支援（情報）"],
-  "支援技術学コース（福祉機器）": ["産共通", "支援（福祉機器）"],
-  "支援技術学コース（福祉住環境）": ["産共通", "支援（福祉住）"]
+  "支援技術学コース": ["産共通", "支援（情報）", "支援（福祉機器）", "支援（福祉住）"]
 };
 
 const courseSelect = document.getElementById("courseSelect");
@@ -122,18 +119,14 @@ courseSelect.addEventListener("change", (e) => {
 
   categorySelect.disabled = false;
 
-  // 選択されたコースに対応する course_name の配列を取得（例: ["産共通", "情報科学"]）
   const targetCourseNames = courseMapping[selectedDisplayName];
 
-  // 該当する学科の講義データを絞り込み
   const coursesInSelectedCourse = coursesData.filter(course =>
     targetCourseNames.includes(course.course_name)
   );
 
-  // その中から重複しないカテゴリを抽出
   const categories = [...new Set(coursesInSelectedCourse.map(course => getCategoryLabel(course)))];
 
-  // カテゴリをアルファベット・五十音順にソートして追加
   categories.sort().forEach(category => {
     if (category) {
       const option = document.createElement("option");
@@ -156,7 +149,6 @@ categorySelect.addEventListener("change", (e) => {
     return;
   }
 
-  // 選択されたコース名に対応する配列を取得
   const targetCourseNames = courseMapping[selectedDisplayName];
 
   // 対象コースかつ、カテゴリラベルが一致する講義を抽出
@@ -164,19 +156,30 @@ categorySelect.addEventListener("change", (e) => {
     targetCourseNames.includes(course.course_name) && getCategoryLabel(course) === selectedCategory
   );
 
-  if (filteredCourses.length === 0) {
+  // 【追加】同じ科目が複数回表示されないように重複を排除する
+  const uniqueCourses = [];
+  const seenSubjects = new Set();
+
+  filteredCourses.forEach(course => {
+    if (!seenSubjects.has(course.subject_name)) {
+      seenSubjects.add(course.subject_name);
+      uniqueCourses.push(course);
+    }
+  });
+
+  if (uniqueCourses.length === 0) {
     courseList.innerHTML = "<li class='course-item'>該当する講義がありません。</li>";
     return;
   }
 
   // 年次順 -> 科目名順 で並び替え
-  filteredCourses.sort((a, b) => {
+  uniqueCourses.sort((a, b) => {
     if (a.year !== b.year) return (a.year > b.year ? 1 : -1);
     return (a.subject_name > b.subject_name ? 1 : -1);
   });
 
   // 抽出した講義をリスト形式でHTMLに追加
-  filteredCourses.forEach(course => {
+  uniqueCourses.forEach(course => {
     const li = document.createElement("li");
     li.className = "course-item";
 
@@ -186,7 +189,7 @@ categorySelect.addEventListener("change", (e) => {
     const year = course.year ? `${course.year}年次` : "-";
     const method = course.teaching_method || "-";
 
-    // 産共通か専門かでタグの色分けなどをすると見やすいです
+    // 産共通か専門かでタグを判定
     const deptTag = course.course_name === "産共通" ? "共通" : "専門";
 
     li.innerHTML = `
