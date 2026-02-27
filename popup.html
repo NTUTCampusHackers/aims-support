@@ -58,26 +58,41 @@
         color: #9aa0a6;
       }
 
+      /* 講義リストのスタイル */
       #courseList {
-        list-style-type: none;
         padding-left: 0;
         margin: 0;
-        max-height: 250px;
+        max-height: 350px;
         overflow-y: auto;
       }
+      .section-header {
+        font-size: 14px;
+        font-weight: bold;
+        color: #202124;
+        margin-top: 15px;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 2px solid #4285f4;
+      }
+      .empty-message {
+        font-size: 12px;
+        color: #5f6368;
+        padding: 5px;
+      }
       .course-item {
-        padding: 10px 8px;
+        padding: 8px 10px;
         border-bottom: 1px solid #eee;
+        margin-left: 10px; /* 少し字下げして階層を表現 */
       }
       .course-item:last-child { border-bottom: none; }
       .course-title {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: bold;
         color: #202124;
         margin-bottom: 4px;
       }
       .course-details {
-        font-size: 12px;
+        font-size: 11px;
         color: #5f6368;
         line-height: 1.4;
       }
@@ -88,7 +103,7 @@
         padding: 2px 6px;
         border-radius: 4px;
         font-size: 10px;
-        margin-bottom: 4px;
+        margin-right: 4px;
       }
     </style>
   </head>
@@ -117,9 +132,9 @@
       <option value="">分野区分を選択してください</option>
     </select>
 
-    <ul id="courseList">
-      <li class="course-item">コースと分野を選択するとここに講義が表示されます。</li>
-    </ul>
+    <div id="courseList">
+      <div class="empty-message">コースと分野を選択するとここに講義が表示されます。</div>
+    </div>
 
     <script src="popup.js"></script>
   </body>
