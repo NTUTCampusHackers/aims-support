@@ -53,58 +53,51 @@
         border: 1px solid #dadce0;
         border-radius: 4px;
       }
-      select:disabled {
-        background-color: #f1f3f4;
-        color: #9aa0a6;
-      }
 
-      /* 講義リストのスタイル */
+      /* ツリー階層リストのスタイル */
       #courseList {
         padding-left: 0;
         margin: 0;
-        max-height: 350px;
+        max-height: 400px;
         overflow-y: auto;
-      }
-      .section-header {
-        font-size: 14px;
-        font-weight: bold;
         color: #202124;
-        margin-top: 15px;
-        margin-bottom: 8px;
-        padding-bottom: 4px;
-        border-bottom: 2px solid #4285f4;
+        font-size: 13px;
+        line-height: 1.6;
       }
       .empty-message {
         font-size: 12px;
         color: #5f6368;
         padding: 5px;
       }
-      .course-item {
-        padding: 8px 10px;
-        border-bottom: 1px solid #eee;
-        margin-left: 10px; /* 少し字下げして階層を表現 */
-      }
-      .course-item:last-child { border-bottom: none; }
-      .course-title {
-        font-size: 13px;
+
+      /* 大項目（専門教育科目など） */
+      .cat-large {
         font-weight: bold;
-        color: #202124;
-        margin-bottom: 4px;
+        font-size: 14px;
+        margin-top: 15px;
+        border-bottom: 2px solid #4285f4;
+        padding-bottom: 2px;
       }
-      .course-details {
-        font-size: 11px;
+      /* 中項目（専門教育／必修など） */
+      .cat-medium {
+        font-weight: bold;
+        margin-top: 8px;
+        margin-left: 15px;
+      }
+      /* リスト見出し（未履修の講義など） */
+      .list-header {
+        margin-top: 4px;
+        margin-left: 30px;
         color: #5f6368;
-        line-height: 1.4;
       }
-      .tag {
-        display: inline-block;
-        background: #e8f0fe;
-        color: #1a73e8;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 10px;
-        margin-right: 4px;
+      /* 講義名 */
+      .course-item {
+        margin-left: 45px;
       }
+
+      /* ステータスバッジ */
+      .status-ok { color: #0f9d58; font-weight: normal; font-size: 12px; }
+      .status-ng { color: #d93025; font-weight: bold; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -123,17 +116,13 @@
 
     <hr>
 
-    <h2>コース・分野別講義リスト</h2>
+    <h2>コース別 履修状況ツリー</h2>
     <select id="courseSelect">
       <option value="">コースを選択してください</option>
     </select>
 
-    <select id="categorySelect" disabled>
-      <option value="">分野区分を選択してください</option>
-    </select>
-
     <div id="courseList">
-      <div class="empty-message">コースと分野を選択するとここに講義が表示されます。</div>
+      <div class="empty-message">「ページから単位を集計する」を実行後、コースを選択するとツリーが表示されます。</div>
     </div>
 
     <script src="popup.js"></script>

@@ -1,13 +1,33 @@
 // ==========================================
-// 1. 単位集計機能＆表からの不足単位解析
+// 1. 単位集計機能＆表解析ロジック
 // ==========================================
 const extractBtn = document.getElementById("extractBtn");
 const creditOkValue = document.getElementById("creditOkValue");
 const creditNgValue = document.getElementById("creditNgValue");
 
 let completedCoursesInfo = {};
-let shortfallCategoriesList = [];
+let parsedCategories = { large: {}, medium: {} };
 let isExtracted = false;
+
+// 中項目の一覧マスター
+const mediumKeysMaster = [
+  "教養系教育科目／選択", "語学・外国語／必修", "語学・手話言語／選必", "語学・日本語／必修",
+  "健康スポーツ教育／必修", "健康スポーツ教育／選必", "キャリア教育科目／必修", "語学・健康・キャリア教育／選択",
+  "技術基礎／必修", "データサイエンス／必修", "産業情報学基礎教育科目／選択",
+  "専門基礎教育／必修", "専門基礎教育／選択",
+  "専門教育／必修", "専門教育／選択必修", "専門教育／選択"
+];
+
+// 大項目と中項目の紐付け設定
+const largeToMediumMap = {
+  "専門教育科目": ["専門教育／必修", "専門教育／選択必修", "専門教育／選択"],
+  "専門基礎教育科目": ["専門基礎教育／必修", "専門基礎教育／選択"],
+  "産業情報学基礎教育科目": ["技術基礎／必修", "データサイエンス／必修", "産業情報学基礎教育科目／選択"],
+  "教養教育系科目": [
+    "教養系教育科目／選択", "語学・外国語／必修", "語学・手話言語／選必", "語学・日本語／必修",
+    "健康スポーツ教育／必修", "健康スポーツ教育／選必", "キャリア教育科目／必修", "語学・健康・キャリア教育／選択"
+  ]
+};
 
 extractBtn.addEventListener("click", async () => {
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -15,18 +35,17 @@ extractBtn.addEventListener("click", async () => {
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: calculateCredits,
+    args: [mediumKeysMaster]
   }, (results) => {
     if (results && results[0] && results[0].result) {
       const data = results[0].result;
       creditOkValue.textContent = `${data.creditTotal} 単位`;
       creditNgValue.textContent = `${data.noCreditTotal} 単位`;
 
-      // 解析データをグローバル変数に保持
       completedCoursesInfo = data.completedCoursesInfo;
-      shortfallCategoriesList = data.shortfallCategories;
+      parsedCategories = data.parsedCategories;
       isExtracted = true;
 
-      // もし既にコースが選択されていた場合、リストを更新
       if (courseSelect.value) {
         courseSelect.dispatchEvent(new Event('change'));
       } else {
@@ -39,7 +58,7 @@ extractBtn.addEventListener("click", async () => {
 });
 
 // コンテンツスクリプト（実際のページ上で実行される関数）
-function calculateCredits() {
+function calculateCredits(mediumKeysArr) {
   const text = document.body.innerText;
   const lines = text.split('\n');
 
@@ -48,7 +67,7 @@ function calculateCredits() {
   let parsedSubjects = new Set();
   let completed = {};
 
-  // ① これまでの成績テキスト読み取り（履修済講義の取得）
+  // ① 履修済講義の取得
   lines.forEach(line => {
     const parts = line.trim().split(/\t+|\s{2,}/);
     if (parts.length >= 5) {
@@ -56,8 +75,7 @@ function calculateCredits() {
       for (let i = parts.length - 2; i >= 1; i--) {
         if (/^(A\+|A|B|C|D)$/.test(parts[i].trim())) {
           if (/^\d+$/.test(parts[i + 1].trim())) {
-            gradeIndex = i;
-            break;
+            gradeIndex = i; break;
           }
         }
       }
@@ -68,56 +86,50 @@ function calculateCredits() {
 
         if (!parsedSubjects.has(subjectName)) {
           parsedSubjects.add(subjectName);
-          if (grade === 'D') {
-            noCreditTotal += credit;
-          } else {
-            creditTotal += credit;
-            completed[subjectName] = credit;
-          }
+          if (grade === 'D') noCreditTotal += credit;
+          else { creditTotal += credit; completed[subjectName] = credit; }
         }
       }
     }
   });
 
-  // ② 単位集計表（HTMLタグ）からの不足分野読み取り
-  let shortfallCategories = new Set();
+  // ② HTMLテーブルから不足単位の抽出
+  let extractedCats = { large: {}, medium: {} };
+
+  const getNum = (td) => {
+    if (!td) return 0;
+    const match = td.innerText.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+
   try {
     const lblBunya = document.getElementById("ctlTaniShukei_lblBunya");
     const lblYouken = document.getElementById("ctlTaniShukei_lblYouken");
     const lblShutoku = document.getElementById("ctlTaniShukei_lblShutoku");
 
     if (lblBunya && lblYouken && lblShutoku) {
-      const trBunya = lblBunya.closest("tr");
-      const trYouken = lblYouken.closest("tr");
-      const trShutoku = lblShutoku.closest("tr");
+      const trBunya = lblBunya.closest("tr").querySelectorAll("td");
+      const trYouken = lblYouken.closest("tr").querySelectorAll("td");
+      const trShutoku = lblShutoku.closest("tr").querySelectorAll("td");
 
-      const tdsBunya = trBunya.querySelectorAll("td");
-      const tdsYouken = trYouken.querySelectorAll("td");
-      const tdsShutoku = trShutoku.querySelectorAll("td");
+      for (let i = 1; i < trBunya.length; i++) {
+        const bTextClean = trBunya[i].innerText.replace(/[\s　\n]/g, '');
+        const req = getNum(trYouken[i]);
+        const earned = getNum(trShutoku[i]);
+        const shortfall = req - earned > 0 ? req - earned : 0;
 
-      for (let i = 1; i < tdsBunya.length; i++) {
-        const bunyaText = tdsBunya[i].innerText.replace(/\s/g, '');
-        const youkenText = tdsYouken[i] ? tdsYouken[i].innerText.trim() : "0";
-        const shutokuText = tdsShutoku[i] ? tdsShutoku[i].innerText.trim() : "0";
+        // 大項目の判定（「合計」という文字が含まれる列）
+        if (bTextClean.includes("教養教育系科目合計")) extractedCats.large["教養教育系科目"] = { req, earned, shortfall };
+        else if (bTextClean.includes("産業情報学基礎教育科目合計")) extractedCats.large["産業情報学基礎教育科目"] = { req, earned, shortfall };
+        else if (bTextClean.includes("専門基礎教育科目合計")) extractedCats.large["専門基礎教育科目"] = { req, earned, shortfall };
+        else if (bTextClean.includes("専門教育科目合計")) extractedCats.large["専門教育科目"] = { req, earned, shortfall };
 
-        const req = parseInt(youkenText, 10) || 0;
-        const earned = parseInt(shutokuText, 10) || 0;
-
-        // 卒業要件 - 修得単位 を計算して不足があるかチェック
-        if (req - earned > 0) {
-          let mappedCat = "";
-          // 表の列名をDBのカテゴリ名（中分類・大分類）にマッピング
-          if (bunyaText.includes("教養系教育")) mappedCat = "教養系教育科目";
-          else if (bunyaText.includes("語学")) mappedCat = "語学教育科目";
-          else if (bunyaText.includes("健康スポーツ")) mappedCat = "健康・スポーツ教育科目";
-          else if (bunyaText.includes("キャリア")) mappedCat = "キャリア教育科目";
-          else if (bunyaText.includes("技術基礎") || bunyaText.includes("データサイエンス") || bunyaText.includes("産業情報学基礎")) mappedCat = "産業情報学基礎教育科目";
-          else if (bunyaText.includes("専門基礎")) mappedCat = "専門基礎教育科目";
-          else if (bunyaText.includes("専門教育")) mappedCat = "専門教育科目";
-          else if (bunyaText.includes("教養教育系")) mappedCat = "教養教育系科目";
-
-          if (mappedCat) {
-            shortfallCategories.add(mappedCat);
+        // 中項目の判定（「計」という文字を含まない列のみ対象にする）
+        if (!bTextClean.includes("計")) {
+          // 「／」を無視して文字列が一致するか確認
+          const matchKey = mediumKeysArr.find(k => bTextClean.replace(/／/g, '').includes(k.replace(/／/g, '')));
+          if (matchKey) {
+            extractedCats.medium[matchKey] = { req, earned, shortfall };
           }
         }
       }
@@ -126,16 +138,11 @@ function calculateCredits() {
     console.error("単位集計表の解析エラー:", e);
   }
 
-  return {
-    creditTotal,
-    noCreditTotal,
-    completedCoursesInfo: completed,
-    shortfallCategories: Array.from(shortfallCategories)
-  };
+  return { creditTotal, noCreditTotal, completedCoursesInfo: completed, parsedCategories: extractedCats };
 }
 
 // ==========================================
-// 2. コース・分野別講義リスト表示機能
+// 2. ツリー描画ロジック
 // ==========================================
 
 const courseMapping = {
@@ -146,15 +153,10 @@ const courseMapping = {
 };
 
 const courseSelect = document.getElementById("courseSelect");
-const categorySelect = document.getElementById("categorySelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
 
-function getCategoryLabel(course) {
-  return course.category_medium || course.category_large || "その他";
-}
-
-// JSONファイルを読み込む
+// JSONから科目データを読み込む
 fetch(chrome.runtime.getURL('courses_view.json'))
   .then(response => response.json())
   .then(data => {
@@ -165,133 +167,140 @@ fetch(chrome.runtime.getURL('courses_view.json'))
       option.textContent = displayName;
       courseSelect.appendChild(option);
     });
-  })
-  .catch(error => {
-    courseList.innerHTML = "<div class='empty-message'>データの読み込みに失敗しました。</div>";
   });
 
-// 【STEP 1】コース選択時（不足分野のみを抽出）
+// JSONの講義データを「中項目」の名前にマッピングする関数
+function getChukoumoku(course) {
+  const large = course.category_large || "";
+  const med = course.category_medium || "";
+  const small = course.category_small || "";
+  const req = course.requirement_type || "";
+
+  if (large === "教養教育系科目") {
+    if (med === "教養系教育科目") return "教養系教育科目／選択";
+    if (req === "選択" && (med === "語学教育科目" || med === "健康・スポーツ教育科目" || med === "キャリア教育科目")) return "語学・健康・キャリア教育／選択";
+    if (med === "語学教育科目") {
+      if (small === "外国語" && req === "必修") return "語学・外国語／必修";
+      if (small === "手話言語") return "語学・手話言語／選必";
+      if (small === "日本語" && req === "必修") return "語学・日本語／必修";
+    }
+    if (med === "健康・スポーツ教育科目") {
+      if (req === "必修") return "健康スポーツ教育／必修";
+      if (req === "選択必修") return "健康スポーツ教育／選必";
+    }
+    if (med === "キャリア教育科目" && req === "必修") return "キャリア教育科目／必修";
+  } else if (large === "専門教育系科目") {
+    if (med === "産業情報学基礎教育科目") {
+      if (req === "選択") return "産業情報学基礎教育科目／選択";
+      if (small === "技術基礎科目" && req === "必修") return "技術基礎／必修";
+      if (small === "データサイエンス科目" && req === "必修") return "データサイエンス／必修";
+    }
+    if (med === "専門基礎教育科目") {
+      if (req === "必修") return "専門基礎教育／必修";
+      if (req === "選択") return "専門基礎教育／選択";
+    }
+    if (med === "専門教育科目") {
+      if (req === "必修") return "専門教育／必修";
+      if (req === "選択必修") return "専門教育／選択必修";
+      if (req === "選択") return "専門教育／選択";
+    }
+  }
+  return null;
+}
+
+// コース選択時にツリー全体を描画
 courseSelect.addEventListener("change", (e) => {
   const selectedDisplayName = e.target.value;
-
-  categorySelect.innerHTML = '<option value="">分野区分を選択してください</option>';
-  courseList.innerHTML = "<div class='empty-message'>分野を選択するとここに講義が表示されます。</div>";
+  courseList.innerHTML = "";
 
   if (!selectedDisplayName) {
-    categorySelect.disabled = true;
+    courseList.innerHTML = "<div class='empty-message'>コースを選択してください。</div>";
     return;
   }
-
-  // ページ上の集計ボタンが押されていない場合は操作をブロック
   if (!isExtracted) {
-    categorySelect.innerHTML = '<option value="">先に「ページから単位を集計」を実行してください</option>';
-    categorySelect.disabled = true;
+    courseSelect.value = "";
+    alert("先に「ページから単位を集計する」ボタンを押してください。");
     return;
   }
-
-  categorySelect.disabled = false;
 
   const targetCourseNames = courseMapping[selectedDisplayName];
   const coursesInSelectedCourse = coursesData.filter(course =>
     targetCourseNames.includes(course.course_name)
   );
 
-  const availableCategories = [...new Set(coursesInSelectedCourse.map(c => getCategoryLabel(c)))];
-  let optionAdded = false;
+  // 大項目ごとに処理
+  Object.keys(largeToMediumMap).forEach(largeKey => {
+    const largeData = parsedCategories.large[largeKey] || { shortfall: 0 };
+    const isLargeShort = largeData.shortfall > 0;
 
-  availableCategories.sort().forEach(category => {
-    // ページから取得した「不足単位のある分野リスト(shortfallCategoriesList)」に含まれる場合のみ表示
-    if (shortfallCategoriesList.includes(category)) {
-      const option = document.createElement("option");
-      option.value = category;
-      option.textContent = category;
-      categorySelect.appendChild(option);
-      optionAdded = true;
+    // ① 大項目の描画
+    const largeDiv = document.createElement("div");
+    largeDiv.className = "cat-large";
+    largeDiv.innerHTML = `・${largeKey}　` +
+      (isLargeShort
+        ? `<span class="status-ng">不足　${largeData.shortfall}</span>`
+        : `<span class="status-ok">満</span>`);
+    courseList.appendChild(largeDiv);
+
+    // 大項目が「不足」の場合のみ中項目を展開
+    if (isLargeShort) {
+      largeToMediumMap[largeKey].forEach(mediumKey => {
+        const mediumData = parsedCategories.medium[mediumKey] || { shortfall: 0 };
+
+        // ② 中項目の描画（不足しているもののみ）
+        if (mediumData.shortfall > 0) {
+          const mediumDiv = document.createElement("div");
+          mediumDiv.className = "cat-medium";
+          mediumDiv.innerHTML = `・${mediumKey}　<span class="status-ng">不足　${mediumData.shortfall}</span>`;
+          courseList.appendChild(mediumDiv);
+
+          // 講義データの仕分け
+          const filteredCourses = coursesInSelectedCourse.filter(c => getChukoumoku(c) === mediumKey);
+          const uncompleted = [];
+          const completed = [];
+          const seen = new Set();
+
+          filteredCourses.forEach(c => {
+            if (!seen.has(c.subject_name)) {
+              seen.add(c.subject_name);
+              if (completedCoursesInfo[c.subject_name]) completed.push(c);
+              else uncompleted.push(c);
+            }
+          });
+
+          // 並び替え用ヘルパー関数
+          const sortCourses = (a, b) => {
+            if (a.year !== b.year) return (a.year > b.year ? 1 : -1);
+            return (a.subject_name > b.subject_name ? 1 : -1);
+          };
+
+          const renderList = (coursesArr, titleText) => {
+            const header = document.createElement("div");
+            header.className = "list-header";
+            header.textContent = `・${titleText}`;
+            courseList.appendChild(header);
+
+            if (coursesArr.length > 0) {
+              coursesArr.sort(sortCourses).forEach(c => {
+                const item = document.createElement("div");
+                item.className = "course-item";
+                item.textContent = `・${c.subject_name}`;
+                courseList.appendChild(item);
+              });
+            } else {
+              const item = document.createElement("div");
+              item.className = "course-item";
+              item.style.color = "#9aa0a6";
+              item.textContent = "・該当なし";
+              courseList.appendChild(item);
+            }
+          };
+
+          // ③ 未履修・履修済のリスト描画
+          renderList(uncompleted, "未履修の講義");
+          renderList(completed, "履修済の講義");
+        }
+      });
     }
   });
-
-  // もし不足分野が1つもない場合（すべて単位取得済み）
-  if (!optionAdded) {
-    categorySelect.innerHTML = '<option value="">不足している分野はありません</option>';
-    categorySelect.disabled = true;
-  }
-});
-
-// 【STEP 2】分野選択時（未履修・履修済を一覧表示）
-categorySelect.addEventListener("change", (e) => {
-  const selectedDisplayName = courseSelect.value;
-  const selectedCategory = e.target.value;
-
-  courseList.innerHTML = "";
-
-  if (!selectedCategory || !selectedDisplayName) {
-    courseList.innerHTML = "<div class='empty-message'>コースと分野を選択してください。</div>";
-    return;
-  }
-
-  const targetCourseNames = courseMapping[selectedDisplayName];
-  const filteredCourses = coursesData.filter(course =>
-    targetCourseNames.includes(course.course_name) && getCategoryLabel(course) === selectedCategory
-  );
-
-  const uncompletedCourses = [];
-  const completedCourses = [];
-  const seenSubjects = new Set();
-
-  filteredCourses.forEach(course => {
-    if (!seenSubjects.has(course.subject_name)) {
-      seenSubjects.add(course.subject_name);
-
-      // 取得済み講義リストに存在すれば「履修済」、なければ「未履修」に振り分ける
-      if (completedCoursesInfo[course.subject_name]) {
-        completedCourses.push(course);
-      } else {
-        uncompletedCourses.push(course);
-      }
-    }
-  });
-
-  // 並び替え用関数（年次順 -> 科目名順）
-  const sortCourses = (a, b) => {
-    if (a.year !== b.year) return (a.year > b.year ? 1 : -1);
-    return (a.subject_name > b.subject_name ? 1 : -1);
-  };
-
-  const renderCourseItem = (course, container) => {
-    const div = document.createElement("div");
-    div.className = "course-item";
-    const title = course.subject_name || "不明な講義";
-    const reqOrChoice = course.requirement_type || "-";
-    const deptTag = course.course_name === "産共通" ? "共通" : "専門";
-
-    div.innerHTML = `
-      <div class="course-title"><span class="tag">${deptTag}</span>${title}</div>
-      <div class="course-details">区分: ${reqOrChoice}</div>
-    `;
-    container.appendChild(div);
-  };
-
-  // === 【未履修の講義セクション】 ===
-  const uncompHeader = document.createElement("div");
-  uncompHeader.className = "section-header";
-  uncompHeader.textContent = "未履修の講義";
-  courseList.appendChild(uncompHeader);
-
-  if (uncompletedCourses.length > 0) {
-    uncompletedCourses.sort(sortCourses).forEach(c => renderCourseItem(c, courseList));
-  } else {
-    courseList.insertAdjacentHTML('beforeend', '<div class="empty-message">未履修の講義はありません。</div>');
-  }
-
-  // === 【履修済の講義セクション】 ===
-  const compHeader = document.createElement("div");
-  compHeader.className = "section-header";
-  compHeader.textContent = "履修済の講義";
-  courseList.appendChild(compHeader);
-
-  if (completedCourses.length > 0) {
-    completedCourses.sort(sortCourses).forEach(c => renderCourseItem(c, courseList));
-  } else {
-    courseList.insertAdjacentHTML('beforeend', '<div class="empty-message">履修済の講義はありません。</div>');
-  }
 });
