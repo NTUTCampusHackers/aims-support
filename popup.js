@@ -29,13 +29,17 @@ const largeToMediumMap = {
   ]
 };
 
+// ★追加：科目名のマッピング用辞書（エイリアス -> 代表名）
+let subjectNameMap = {};
+
 extractBtn.addEventListener("click", async () => {
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: calculateCredits,
-    args: [mediumKeysMaster]
+    // ★追加：作成したマッピング辞書を引数としてページ側へ渡す
+    args: [mediumKeysMaster, subjectNameMap]
   }, (results) => {
     if (results && results[0] && results[0].result) {
       const data = results[0].result;
@@ -58,7 +62,7 @@ extractBtn.addEventListener("click", async () => {
 });
 
 // コンテンツスクリプト（実際のページ上で実行される関数）
-function calculateCredits(mediumKeysArr) {
+function calculateCredits(mediumKeysArr, nameMap) {
   const text = document.body.innerText;
   const lines = text.split('\n');
 
@@ -82,7 +86,12 @@ function calculateCredits(mediumKeysArr) {
       if (gradeIndex !== -1) {
         const grade = parts[gradeIndex].trim();
         const credit = parseInt(parts[gradeIndex + 1].trim(), 10);
-        const subjectName = parts[1].trim();
+        let subjectName = parts[1].trim();
+
+        // ★追加：マッピングファイルに別名が登録されていれば、代表名に置き換える
+        if (nameMap && nameMap[subjectName]) {
+          subjectName = nameMap[subjectName];
+        }
 
         if (!parsedSubjects.has(subjectName)) {
           parsedSubjects.add(subjectName);
@@ -143,12 +152,11 @@ function calculateCredits(mediumKeysArr) {
     console.error("単位集計表の解析エラー:", e);
   }
 
-  // ★以前の「強制的に選択に割り当てる」処理を削除し、純粋に表のデータをそのまま返します
   return { creditTotal, noCreditTotal, completedCoursesInfo: completed, parsedCategories: extractedCats };
 }
 
 // ==========================================
-// 2. ツリー描画ロジック
+// 2. ツリー描画ロジック＆データ読み込み
 // ==========================================
 
 const courseMapping = {
@@ -162,17 +170,32 @@ const courseSelect = document.getElementById("courseSelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
 
-fetch(chrome.runtime.getURL('courses_view.json'))
-  .then(response => response.json())
-  .then(data => {
-    coursesData = data;
-    Object.keys(courseMapping).forEach(displayName => {
-      const option = document.createElement("option");
-      option.value = displayName;
-      option.textContent = displayName;
-      courseSelect.appendChild(option);
+// ★変更：courses_view.json と subject_name_map.json を同時に読み込む
+Promise.all([
+  fetch(chrome.runtime.getURL('courses_view.json')).then(res => res.json()),
+  fetch(chrome.runtime.getURL('subject_name_map.json')).then(res => res.json()).catch(() => ({})) // 無くてもエラーにしない
+])
+.then(([courses, mapping]) => {
+  coursesData = courses;
+
+  // ★追加：マッピングの逆引き辞書を作成 (例: "ソフトウェア" -> "ソフトウエア")
+  Object.keys(mapping).forEach(canonical => {
+    mapping[canonical].forEach(alias => {
+      subjectNameMap[alias] = canonical;
     });
   });
+
+  Object.keys(courseMapping).forEach(displayName => {
+    const option = document.createElement("option");
+    option.value = displayName;
+    option.textContent = displayName;
+    courseSelect.appendChild(option);
+  });
+})
+.catch(error => {
+  courseList.innerHTML = "<div class='empty-message'>データの読み込みに失敗しました。</div>";
+  console.error("Fetch Error:", error);
+});
 
 function getChukoumoku(course) {
   const large = course.category_large || "";
@@ -231,57 +254,40 @@ courseSelect.addEventListener("change", (e) => {
     targetCourseNames.includes(course.course_name)
   );
 
-  // 大項目ごとに処理
   Object.keys(largeToMediumMap).forEach(largeKey => {
     const largeData = parsedCategories.large[largeKey] || { shortfall: 0 };
-
-    // その大項目に属する中項目のいずれかが不足しているかチェック
     const hasMediumShortfall = largeToMediumMap[largeKey].some(m => (parsedCategories.medium[m]?.shortfall || 0) > 0);
-
-    // 大項目自体の合計不足、または中項目の不足があれば「不足」扱いとしてツリーを展開
     const isLargeShort = largeData.shortfall > 0 || hasMediumShortfall;
 
-    // ① 大項目の描画（常に表示）
     const largeDiv = document.createElement("div");
     largeDiv.className = "cat-large";
     let largeStatusText = '<span class="status-ok">満</span>';
     if (isLargeShort) {
-      // 合計単位が不足している場合はその数値を表示、そうでない場合（必修だけ不足している等）は「不足」とのみ表示
       const shortfallText = largeData.shortfall > 0 ? `不足　${largeData.shortfall}` : '不足';
       largeStatusText = `<span class="status-ng">${shortfallText}</span>`;
     }
     largeDiv.innerHTML = `・${largeKey}　${largeStatusText}`;
     courseList.appendChild(largeDiv);
 
-    // 大項目が「不足」の場合のみ中項目を展開
     if (isLargeShort) {
       largeToMediumMap[largeKey].forEach(mediumKey => {
         const mediumData = parsedCategories.medium[mediumKey] || { shortfall: 0 };
-
-        // 基本は中項目自体が不足している場合のみ表示
         let shouldDisplayMedium = mediumData.shortfall > 0;
 
-        // 【重要】専門教育科目の特別ルール
-        // 合計単位（Large）が不足している場合、必修・選択必修・選択の「すべて」を合計単位補填の選択肢として表示する
         if (largeKey === "専門教育科目" && largeData.shortfall > 0) {
           shouldDisplayMedium = true;
         }
 
-        // ② 中項目の描画（表示条件を満たしたもののみ）
         if (shouldDisplayMedium) {
           const mediumDiv = document.createElement("div");
           mediumDiv.className = "cat-medium";
           let mediumStatusText = "";
-
-          // 中項目自体に具体的な不足がある場合のみ「不足 X」と表示する
           if (mediumData.shortfall > 0) {
             mediumStatusText = `　<span class="status-ng">不足　${mediumData.shortfall}</span>`;
           }
-
           mediumDiv.innerHTML = `・${mediumKey}${mediumStatusText}`;
           courseList.appendChild(mediumDiv);
 
-          // 講義データの仕分け
           const filteredCourses = coursesInSelectedCourse.filter(c => getChukoumoku(c) === mediumKey);
           const uncompleted = [];
           const completed = [];
@@ -322,7 +328,6 @@ courseSelect.addEventListener("change", (e) => {
             }
           };
 
-          // ③ 未履修・履修済のリスト描画
           renderList(uncompleted, "未履修の講義");
           renderList(completed, "履修済の講義");
         }
