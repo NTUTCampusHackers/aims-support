@@ -93,7 +93,7 @@ function calculateCredits(mediumKeysArr) {
     }
   });
 
-  // ② HTMLテーブルから不足単位の抽出
+  // ② HTMLテーブルから「不足単位」を抽出
   let extractedCats = { large: {}, medium: {} };
 
   const getNum = (td) => {
@@ -106,30 +106,35 @@ function calculateCredits(mediumKeysArr) {
     const lblBunya = document.getElementById("ctlTaniShukei_lblBunya");
     const lblYouken = document.getElementById("ctlTaniShukei_lblYouken");
     const lblShutoku = document.getElementById("ctlTaniShukei_lblShutoku");
+    const lblFusoku = document.getElementById("ctlTaniShukei_lblFusoku");
 
-    if (lblBunya && lblYouken && lblShutoku) {
+    if (lblBunya) {
       const trBunya = lblBunya.closest("tr").querySelectorAll("td");
-      const trYouken = lblYouken.closest("tr").querySelectorAll("td");
-      const trShutoku = lblShutoku.closest("tr").querySelectorAll("td");
+      const trYouken = lblYouken ? lblYouken.closest("tr").querySelectorAll("td") : [];
+      const trShutoku = lblShutoku ? lblShutoku.closest("tr").querySelectorAll("td") : [];
+      const trFusoku = lblFusoku ? lblFusoku.closest("tr").querySelectorAll("td") : [];
 
       for (let i = 1; i < trBunya.length; i++) {
         const bTextClean = trBunya[i].innerText.replace(/[\s　\n]/g, '');
-        const req = getNum(trYouken[i]);
-        const earned = getNum(trShutoku[i]);
-        const shortfall = req - earned > 0 ? req - earned : 0;
 
-        // 大項目の判定（「合計」という文字が含まれる列）
-        if (bTextClean.includes("教養教育系科目合計")) extractedCats.large["教養教育系科目"] = { req, earned, shortfall };
-        else if (bTextClean.includes("産業情報学基礎教育科目合計")) extractedCats.large["産業情報学基礎教育科目"] = { req, earned, shortfall };
-        else if (bTextClean.includes("専門基礎教育科目合計")) extractedCats.large["専門基礎教育科目"] = { req, earned, shortfall };
-        else if (bTextClean.includes("専門教育科目合計")) extractedCats.large["専門教育科目"] = { req, earned, shortfall };
+        let shortfall = 0;
+        if (trFusoku.length > i) {
+          shortfall = getNum(trFusoku[i]);
+        } else {
+          const req = getNum(trYouken[i]);
+          const earned = getNum(trShutoku[i]);
+          shortfall = req - earned > 0 ? req - earned : 0;
+        }
 
-        // 中項目の判定（「計」という文字を含まない列のみ対象にする）
+        if (bTextClean.includes("教養教育系科目合計")) extractedCats.large["教養教育系科目"] = { shortfall };
+        else if (bTextClean.includes("産業情報学基礎教育科目合計")) extractedCats.large["産業情報学基礎教育科目"] = { shortfall };
+        else if (bTextClean.includes("専門基礎教育科目合計")) extractedCats.large["専門基礎教育科目"] = { shortfall };
+        else if (bTextClean.includes("専門教育科目合計")) extractedCats.large["専門教育科目"] = { shortfall };
+
         if (!bTextClean.includes("計")) {
-          // 「／」を無視して文字列が一致するか確認
           const matchKey = mediumKeysArr.find(k => bTextClean.replace(/／/g, '').includes(k.replace(/／/g, '')));
           if (matchKey) {
-            extractedCats.medium[matchKey] = { req, earned, shortfall };
+            extractedCats.medium[matchKey] = { shortfall };
           }
         }
       }
@@ -138,6 +143,7 @@ function calculateCredits(mediumKeysArr) {
     console.error("単位集計表の解析エラー:", e);
   }
 
+  // ★以前の「強制的に選択に割り当てる」処理を削除し、純粋に表のデータをそのまま返します
   return { creditTotal, noCreditTotal, completedCoursesInfo: completed, parsedCategories: extractedCats };
 }
 
@@ -156,7 +162,6 @@ const courseSelect = document.getElementById("courseSelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
 
-// JSONから科目データを読み込む
 fetch(chrome.runtime.getURL('courses_view.json'))
   .then(response => response.json())
   .then(data => {
@@ -169,7 +174,6 @@ fetch(chrome.runtime.getURL('courses_view.json'))
     });
   });
 
-// JSONの講義データを「中項目」の名前にマッピングする関数
 function getChukoumoku(course) {
   const large = course.category_large || "";
   const med = course.category_medium || "";
@@ -208,7 +212,6 @@ function getChukoumoku(course) {
   return null;
 }
 
-// コース選択時にツリー全体を描画
 courseSelect.addEventListener("change", (e) => {
   const selectedDisplayName = e.target.value;
   courseList.innerHTML = "";
@@ -231,15 +234,23 @@ courseSelect.addEventListener("change", (e) => {
   // 大項目ごとに処理
   Object.keys(largeToMediumMap).forEach(largeKey => {
     const largeData = parsedCategories.large[largeKey] || { shortfall: 0 };
-    const isLargeShort = largeData.shortfall > 0;
 
-    // ① 大項目の描画
+    // その大項目に属する中項目のいずれかが不足しているかチェック
+    const hasMediumShortfall = largeToMediumMap[largeKey].some(m => (parsedCategories.medium[m]?.shortfall || 0) > 0);
+
+    // 大項目自体の合計不足、または中項目の不足があれば「不足」扱いとしてツリーを展開
+    const isLargeShort = largeData.shortfall > 0 || hasMediumShortfall;
+
+    // ① 大項目の描画（常に表示）
     const largeDiv = document.createElement("div");
     largeDiv.className = "cat-large";
-    largeDiv.innerHTML = `・${largeKey}　` +
-      (isLargeShort
-        ? `<span class="status-ng">不足　${largeData.shortfall}</span>`
-        : `<span class="status-ok">満</span>`);
+    let largeStatusText = '<span class="status-ok">満</span>';
+    if (isLargeShort) {
+      // 合計単位が不足している場合はその数値を表示、そうでない場合（必修だけ不足している等）は「不足」とのみ表示
+      const shortfallText = largeData.shortfall > 0 ? `不足　${largeData.shortfall}` : '不足';
+      largeStatusText = `<span class="status-ng">${shortfallText}</span>`;
+    }
+    largeDiv.innerHTML = `・${largeKey}　${largeStatusText}`;
     courseList.appendChild(largeDiv);
 
     // 大項目が「不足」の場合のみ中項目を展開
@@ -247,11 +258,27 @@ courseSelect.addEventListener("change", (e) => {
       largeToMediumMap[largeKey].forEach(mediumKey => {
         const mediumData = parsedCategories.medium[mediumKey] || { shortfall: 0 };
 
-        // ② 中項目の描画（不足しているもののみ）
-        if (mediumData.shortfall > 0) {
+        // 基本は中項目自体が不足している場合のみ表示
+        let shouldDisplayMedium = mediumData.shortfall > 0;
+
+        // 【重要】専門教育科目の特別ルール
+        // 合計単位（Large）が不足している場合、必修・選択必修・選択の「すべて」を合計単位補填の選択肢として表示する
+        if (largeKey === "専門教育科目" && largeData.shortfall > 0) {
+          shouldDisplayMedium = true;
+        }
+
+        // ② 中項目の描画（表示条件を満たしたもののみ）
+        if (shouldDisplayMedium) {
           const mediumDiv = document.createElement("div");
           mediumDiv.className = "cat-medium";
-          mediumDiv.innerHTML = `・${mediumKey}　<span class="status-ng">不足　${mediumData.shortfall}</span>`;
+          let mediumStatusText = "";
+
+          // 中項目自体に具体的な不足がある場合のみ「不足 X」と表示する
+          if (mediumData.shortfall > 0) {
+            mediumStatusText = `　<span class="status-ng">不足　${mediumData.shortfall}</span>`;
+          }
+
+          mediumDiv.innerHTML = `・${mediumKey}${mediumStatusText}`;
           courseList.appendChild(mediumDiv);
 
           // 講義データの仕分け
@@ -268,7 +295,6 @@ courseSelect.addEventListener("change", (e) => {
             }
           });
 
-          // 並び替え用ヘルパー関数
           const sortCourses = (a, b) => {
             if (a.year !== b.year) return (a.year > b.year ? 1 : -1);
             return (a.subject_name > b.subject_name ? 1 : -1);
