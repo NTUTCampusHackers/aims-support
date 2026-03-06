@@ -18,7 +18,6 @@ const mediumKeysMaster = [
   "専門教育／必修", "専門教育／選択必修", "専門教育／選択"
 ];
 
-// 大項目と中項目の紐付け設定
 const largeToMediumMap = {
   "専門教育科目": ["専門教育／必修", "専門教育／選択必修", "専門教育／選択"],
   "専門基礎教育科目": ["専門基礎教育／必修", "専門基礎教育／選択"],
@@ -29,16 +28,17 @@ const largeToMediumMap = {
   ]
 };
 
-// ★追加：科目名のマッピング用辞書（エイリアス -> 代表名）
 let subjectNameMap = {};
 
 extractBtn.addEventListener("click", async () => {
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+  console.log("=== [Popup] 拡張機能の集計開始 ===");
+  console.log("作成された逆引き辞書 (subjectNameMap):", subjectNameMap);
+
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: calculateCredits,
-    // ★追加：作成したマッピング辞書を引数としてページ側へ渡す
     args: [mediumKeysMaster, subjectNameMap]
   }, (results) => {
     if (results && results[0] && results[0].result) {
@@ -53,16 +53,18 @@ extractBtn.addEventListener("click", async () => {
       if (courseSelect.value) {
         courseSelect.dispatchEvent(new Event('change'));
       } else {
-        alert("集計が完了しました。コースを選択してください。");
+        alert("集計が完了しました。コンソール(F12)のログを確認してください。");
       }
     } else {
-      alert("成績データの読み取りに失敗しました。成績ページで実行してください。");
+      alert("成績データの読み取りに失敗しました。");
     }
   });
 });
 
 // コンテンツスクリプト（実際のページ上で実行される関数）
 function calculateCredits(mediumKeysArr, nameMap) {
+  console.log("=== [WebPage] 成績データの読み取りを開始します ===");
+
   const text = document.body.innerText;
   const lines = text.split('\n');
 
@@ -71,7 +73,6 @@ function calculateCredits(mediumKeysArr, nameMap) {
   let parsedSubjects = new Set();
   let completed = {};
 
-  // ① 履修済講義の取得
   lines.forEach(line => {
     const parts = line.trim().split(/\t+|\s{2,}/);
     if (parts.length >= 5) {
@@ -86,23 +87,30 @@ function calculateCredits(mediumKeysArr, nameMap) {
       if (gradeIndex !== -1) {
         const grade = parts[gradeIndex].trim();
         const credit = parseInt(parts[gradeIndex + 1].trim(), 10);
-        let subjectName = parts[1].trim();
 
-        // ★追加：マッピングファイルに別名が登録されていれば、代表名に置き換える
-        if (nameMap && nameMap[subjectName]) {
-          subjectName = nameMap[subjectName];
+        let originalName = parts[1].trim();
+        // ★修正ポイント1: Webページの名前を辞書で代表名に変換する
+        let mappedName = nameMap && nameMap[originalName] ? nameMap[originalName] : originalName;
+
+        if (nameMap && nameMap[originalName]) {
+            console.log(`[抽出] "${originalName}" -> 代表名 "${mappedName}" として成績を記録します`);
+        } else {
+            console.log(`[抽出] "${originalName}" -> 辞書にないためそのまま成績を記録します`);
         }
 
-        if (!parsedSubjects.has(subjectName)) {
-          parsedSubjects.add(subjectName);
-          if (grade === 'D') noCreditTotal += credit;
-          else { creditTotal += credit; completed[subjectName] = credit; }
+        if (!parsedSubjects.has(mappedName)) {
+          parsedSubjects.add(mappedName);
+          if (grade === 'D') {
+            noCreditTotal += credit;
+          } else {
+            creditTotal += credit;
+            completed[mappedName] = credit;
+          }
         }
       }
     }
   });
 
-  // ② HTMLテーブルから「不足単位」を抽出
   let extractedCats = { large: {}, medium: {} };
 
   const getNum = (td) => {
@@ -152,6 +160,7 @@ function calculateCredits(mediumKeysArr, nameMap) {
     console.error("単位集計表の解析エラー:", e);
   }
 
+  console.log("=== [WebPage] 読み取り完了 ===");
   return { creditTotal, noCreditTotal, completedCoursesInfo: completed, parsedCategories: extractedCats };
 }
 
@@ -170,15 +179,13 @@ const courseSelect = document.getElementById("courseSelect");
 const courseList = document.getElementById("courseList");
 let coursesData = [];
 
-// ★変更：courses_view.json と subject_name_map.json を同時に読み込む
 Promise.all([
   fetch(chrome.runtime.getURL('courses_view.json')).then(res => res.json()),
-  fetch(chrome.runtime.getURL('subject_name_map.json')).then(res => res.json()).catch(() => ({})) // 無くてもエラーにしない
+  fetch(chrome.runtime.getURL('subject_name_map.json')).then(res => res.json()).catch(() => ({}))
 ])
 .then(([courses, mapping]) => {
   coursesData = courses;
 
-  // ★追加：マッピングの逆引き辞書を作成 (例: "ソフトウェア" -> "ソフトウエア")
   Object.keys(mapping).forEach(canonical => {
     mapping[canonical].forEach(alias => {
       subjectNameMap[alias] = canonical;
@@ -293,11 +300,24 @@ courseSelect.addEventListener("change", (e) => {
           const completed = [];
           const seen = new Set();
 
+          console.log(`\n--- [UI描画] 中項目 "${mediumKey}" ---`);
+
           filteredCourses.forEach(c => {
-            if (!seen.has(c.subject_name)) {
-              seen.add(c.subject_name);
-              if (completedCoursesInfo[c.subject_name]) completed.push(c);
-              else uncompleted.push(c);
+            let originalDbName = c.subject_name;
+            // ★修正ポイント2: DB(JSON)の名前も、マッピング辞書を通して代表名に変換する
+            let mappedDbName = subjectNameMap[originalDbName] ? subjectNameMap[originalDbName] : originalDbName;
+
+            if (!seen.has(originalDbName)) {
+              seen.add(originalDbName);
+
+              // 変換後の代表名（または元の名前）が completedCoursesInfo に存在するか照合する
+              if (completedCoursesInfo[mappedDbName] || completedCoursesInfo[originalDbName]) {
+                completed.push(c);
+                console.log(`  => 🟢 [履修済] DB名: "${originalDbName}" (照合キー: "${mappedDbName}")`);
+              } else {
+                uncompleted.push(c);
+                console.log(`  => 🔴 [未履修] DB名: "${originalDbName}" (照合キー: "${mappedDbName}")`);
+              }
             }
           });
 
@@ -316,7 +336,11 @@ courseSelect.addEventListener("change", (e) => {
               coursesArr.sort(sortCourses).forEach(c => {
                 const item = document.createElement("div");
                 item.className = "course-item";
-                item.textContent = `・${c.subject_name}`;
+
+                // ★変更部分：c.credits を呼び出して「（〇単位）」の形で後ろにくっつけます
+                const creditsText = c.credits ? `（${c.credits}単位）` : "";
+                item.textContent = `・${c.subject_name} ${creditsText}`;
+
                 courseList.appendChild(item);
               });
             } else {
